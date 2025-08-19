@@ -1,7 +1,7 @@
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
 import { User, ChevronDown, LogOut, Settings } from "lucide-react";
-import nebulaXLogo from "@assets/Screenshot 2025-07-10 at 22.08.38_1752181724305.png";
+// import nebulaXLogo from "@assets/Screenshot 2025-07-10 at 22.08.38_1752181724305.png";
 
 export function Navbar() {
   const [location] = useLocation();
@@ -57,7 +57,7 @@ export function Navbar() {
         }}>
           <div className="flex items-center gap-1 sm:gap-2 cursor-pointer">
             <img 
-              src={nebulaXLogo} 
+              //src={nebulaXLogo} 
               alt="NebulaX Logo" 
               className="w-6 h-6 sm:w-8 sm:h-8 object-contain"
               style={{ 

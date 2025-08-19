@@ -1,8 +1,35 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { BarChart3, TrendingUp, TrendingDown, Camera, Share2, Download } from "lucide-react";
-import { useState } from "react";
+import { BarChart3, TrendingUp, TrendingDown, Camera, Share2 } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend,
+  Filler,
+  TimeScale,
+} from 'chart.js';
+import 'chartjs-adapter-date-fns';
+import { Line } from 'react-chartjs-2';
+
+// Register Chart.js components
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend,
+  Filler,
+  TimeScale
+);
 
 interface TradingChartProps {
   symbol: string;
@@ -10,170 +37,325 @@ interface TradingChartProps {
 
 export default function TradingChart({ symbol }: TradingChartProps) {
   const [selectedTimeframe, setSelectedTimeframe] = useState("5m");
+  const [chartData, setChartData] = useState<Array<{x: number, y: number}>>([]);
+  const chartRef = useRef<ChartJS<"line"> | null>(null);
 
   // Fetch live market data
-  const { data: markets } = useQuery({
+  const { data: marketsResponse } = useQuery({
     queryKey: ['/api/markets'],
-    refetchInterval: 5000, // Update every 5 seconds
+    refetchInterval: 1000,
   });
 
-  // Find current symbol data - handle format conversion
-  const normalizedSymbol = symbol.replace('/', '');
-  const symbolData = Array.isArray(markets) ? markets.find((market: any) => 
-    market.symbol === symbol || market.symbol === normalizedSymbol || market.symbol.replace('/', '') === normalizedSymbol
-  ) : null;
-  const currentPrice = symbolData ? parseFloat(symbolData.price) : 0;
-  const priceChange = symbolData ? parseFloat(symbolData.change24h) : 0;
-  const priceChangePercent = priceChange;
+  const markets = marketsResponse?.data || marketsResponse || [];
+  
+  const symbolData = markets.find((market: any) => {
+    if (!market || !market.symbol) return false;
+    const marketSymbol = market.symbol.toLowerCase();
+    const targetSymbol = symbol.toLowerCase();
+    return marketSymbol === targetSymbol || 
+           marketSymbol.replace('/', '') === targetSymbol.replace('/', '');
+  });
+
+  const currentPrice = symbolData ? parseFloat(symbolData.price) || 0 : 50000;
+  const priceChange = symbolData ? parseFloat(symbolData.change24h) || 0 : 0;
+  const high24h = symbolData ? parseFloat(symbolData.high24h) || 0 : 0;
+  const low24h = symbolData ? parseFloat(symbolData.low24h) || 0 : 0;
+  const volume24h = symbolData ? parseFloat(symbolData.volume24h) || 0 : 0;
+  const marketCap = symbolData ? parseFloat(symbolData.marketCap) || 0 : 0;
 
   const timeframes = ["1m", "5m", "1h", "1d"];
 
-  // Use only live price data - no simulation
-  const chartData = currentPrice > 0 ? Array(50).fill(currentPrice) : [1000]; // Default to 1000 to avoid division by zero
-  const maxPrice = chartData.length > 0 ? Math.max(...chartData) : 1000;
-  const minPrice = chartData.length > 0 ? Math.min(...chartData) : 1000;
-  
-  // Ensure we don't have division by zero
-  const priceRange = maxPrice - minPrice;
-  const safeRange = priceRange > 0 ? priceRange : 1;
+  // Initialize chart data ONCE
+  useEffect(() => {
+    if (currentPrice <= 0) return;
+
+    const initializeData = () => {
+      const data = [];
+      const basePrice = currentPrice;
+      let price = basePrice;
+      const now = Date.now();
+      
+      // Generate initial 30 data points with timestamps
+      for (let i = 29; i >= 0; i--) {
+        const volatility = basePrice * 0.015;
+        const change = (Math.random() - 0.5) * volatility;
+        price = Math.max(price + change, basePrice * 0.85);
+        
+        const timestamp = now - (i * 5000); // 5-second intervals
+        
+        data.push({
+          x: timestamp,
+          y: parseFloat(price.toFixed(2))
+        });
+      }
+      
+      setChartData(data);
+    };
+
+    // Only initialize once when we first get currentPrice
+    if (chartData.length === 0) {
+      initializeData();
+    }
+  }, [currentPrice, chartData.length]);
+
+  // Add real-time updates with FIXED time window
+  useEffect(() => {
+    if (chartData.length === 0 || !chartRef.current || currentPrice <= 0) return;
+
+    const addRealTimePoint = () => {
+      const chart = chartRef.current;
+      if (!chart) return;
+
+      const now = Date.now();
+      const realPrice = parseFloat(currentPrice.toFixed(2));
+
+      // Create new data point
+      const newPoint = {
+        x: now,
+        y: realPrice
+      };
+
+      // Add to chart dataset
+      if (chart.data.datasets[0] && chart.data.datasets[0].data) {
+        chart.data.datasets[0].data.push(newPoint);
+
+        // Remove old data points (keep last 30)
+        if (chart.data.datasets[0].data.length > 30) {
+          chart.data.datasets[0].data.shift();
+        }
+      }
+
+      // Update time window - fixed 150-second sliding window
+      const windowSize = 150000; // 150 seconds
+      if (chart.options.scales && chart.options.scales.x) {
+        chart.options.scales.x.min = now - windowSize;
+        chart.options.scales.x.max = now;
+      }
+
+      // Update chart with no animation
+      chart.update('none');
+
+      // Update state
+      setChartData(prevData => {
+        const newData = [...prevData, newPoint];
+        return newData.slice(-30);
+      });
+    };
+
+    const interval = setInterval(addRealTimePoint, 5000);
+    return () => clearInterval(interval);
+  }, [currentPrice, chartData.length]);
+
+  // Chart configuration
+  const chartConfig = {
+    datasets: [
+      {
+        label: `${symbol} Price`,
+        data: chartData,
+        borderColor: '#8b5cf6',
+        backgroundColor: 'rgba(139, 92, 246, 0.1)',
+        borderWidth: 2,
+        fill: true,
+        tension: 0.2,
+        pointRadius: 0,
+        pointHoverRadius: 4,
+        pointHoverBackgroundColor: '#8b5cf6',
+        pointHoverBorderColor: '#ffffff',
+        pointHoverBorderWidth: 2,
+      },
+    ],
+  };
+
+  const chartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: {
+      intersect: false,
+      mode: 'index' as const,
+    },
+    plugins: {
+      legend: {
+        display: false,
+      },
+      tooltip: {
+        backgroundColor: 'rgba(15, 23, 42, 0.9)',
+        titleColor: '#d1d5db',
+        bodyColor: '#d1d5db',
+        borderColor: 'rgba(139, 92, 246, 0.3)',
+        borderWidth: 1,
+        callbacks: {
+          label: function(context: any) {
+            return `${symbol}: $${context.parsed.y.toLocaleString()}`;
+          }
+        }
+      },
+    },
+    scales: {
+      x: {
+        type: 'time' as const,
+        min: Date.now() - 150000,
+        max: Date.now(),
+        display: true,
+        grid: {
+          color: 'rgba(139, 92, 246, 0.1)',
+          drawBorder: false,
+        },
+        ticks: {
+          color: '#d1d5db',
+          autoSkip: true,
+          maxTicksLimit: 6,
+          font: {
+            size: 11,
+          },
+        },
+        time: {
+          displayFormats: {
+            second: 'HH:mm:ss',
+            minute: 'HH:mm'
+          }
+        }
+      },
+      y: {
+        display: true,
+        position: 'right' as const,
+        grid: {
+          color: 'rgba(139, 92, 246, 0.1)',
+          drawBorder: false,
+        },
+        ticks: {
+          color: '#d1d5db',
+          callback: function(value: any) {
+            return '$' + value.toLocaleString();
+          },
+          font: {
+            size: 11,
+          },
+        },
+      },
+    },
+    animation: {
+      duration: 0,
+    },
+    transitions: {
+      active: {
+        animation: {
+          duration: 0,
+        }
+      }
+    },
+  };
+
+  // Helper functions
+  const formatVolume = (vol: number) => {
+    if (vol === 0) return '--';
+    if (vol > 1000000) return (vol / 1000000).toFixed(1) + 'M';
+    if (vol > 1000) return (vol / 1000).toFixed(1) + 'K';
+    return vol.toLocaleString(undefined, { maximumFractionDigits: 0 });
+  };
+
+  const formatMarketCap = (cap: number) => {
+    if (cap === 0) return '--';
+    if (cap > 1e9) return '$' + (cap / 1e9).toFixed(1) + 'B';
+    if (cap > 1e6) return '$' + (cap / 1e6).toFixed(1) + 'M';
+    return '$' + cap.toLocaleString();
+  };
 
   return (
-    <Card className="glass">
-      <CardHeader>
-        <div className="flex justify-between items-center">
-          <CardTitle className="flex items-center text-lg">
-            <BarChart3 className="mr-2 h-5 w-5 text-purple-400" />
-            {symbol} Chart
+    <Card className="w-full">
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+        <div className="flex items-center space-x-4">
+          <CardTitle className="text-2xl font-bold">
+            {symbol}
           </CardTitle>
-          <div className="flex space-x-2">
-            {timeframes.map((timeframe) => (
-              <Button
-                key={timeframe}
-                size="sm"
-                variant={selectedTimeframe === timeframe ? "default" : "outline"}
-                onClick={() => setSelectedTimeframe(timeframe)}
-                className={`px-3 py-1 text-xs ${
-                  selectedTimeframe === timeframe 
-                    ? "bg-purple-500" 
-                    : "hover:bg-purple-500/20"
-                }`}
-              >
-                {timeframe}
-              </Button>
-            ))}
+          <div className="flex items-center space-x-2">
+            <span className="text-2xl font-mono">
+              ${currentPrice > 0 ? currentPrice.toLocaleString(undefined, { 
+                minimumFractionDigits: 2, 
+                maximumFractionDigits: 2 
+              }) : '--'}
+            </span>
+            <span className={`flex items-center text-sm font-medium ${
+              priceChange >= 0 ? 'text-green-500' : 'text-red-500'
+            }`}>
+              {priceChange >= 0 ? <TrendingUp className="w-4 h-4 mr-1" /> : <TrendingDown className="w-4 h-4 mr-1" />}
+              {priceChange !== 0 ? (priceChange >= 0 ? '+' : '') + priceChange.toFixed(2) + '%' : '+0.00%'}
+            </span>
           </div>
+        </div>
+        
+        <div className="flex items-center space-x-2">
+          <Button variant="outline" size="sm">
+            <Camera className="w-4 h-4 mr-2" />
+            Screenshot
+          </Button>
+          <Button variant="outline" size="sm">
+            <Share2 className="w-4 h-4 mr-2" />
+            Share
+          </Button>
         </div>
       </CardHeader>
-      <CardContent>
-        {/* Price Header */}
-        <div className="flex items-center justify-between mb-4 p-4 bg-muted/20 rounded-lg">
-          <div>
-            <div className="text-2xl font-bold">${currentPrice.toLocaleString()}</div>
-            <div className={`flex items-center text-sm ${priceChange >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-              {priceChange >= 0 ? <TrendingUp className="w-4 h-4 mr-1" /> : <TrendingDown className="w-4 h-4 mr-1" />}
-              {priceChange >= 0 ? '+' : ''}{priceChange.toFixed(2)} ({priceChangePercent >= 0 ? '+' : ''}{priceChangePercent.toFixed(2)}%)
-            </div>
-          </div>
-          <div className="text-right">
-            <div className="text-sm text-muted-foreground">24h Volume</div>
-            <div className="font-semibold">
-              {symbolData ? `${parseFloat(symbolData.volume24h).toLocaleString()} USDT` : 'Loading...'}
-            </div>
-          </div>
-        </div>
 
-        {/* Simple SVG Chart */}
-        <div className="rounded-xl h-96 bg-slate-900/50 p-4">
-          <svg width="100%" height="100%" viewBox="0 0 800 300" className="w-full h-full">
-            <defs>
-              <linearGradient id="priceGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                <stop offset="0%" stopColor="#8b5cf6" stopOpacity="0.4" />
-                <stop offset="100%" stopColor="#8b5cf6" stopOpacity="0.1" />
-              </linearGradient>
-            </defs>
-            
-            {/* Grid lines */}
-            {Array.from({ length: 6 }).map((_, i) => (
-              <line
-                key={i}
-                x1="0"
-                y1={i * 50}
-                x2="800"
-                y2={i * 50}
-                stroke="rgba(139, 92, 246, 0.1)"
-                strokeWidth="1"
-              />
-            ))}
-            
-            {/* Price line */}
-            <path
-              d={`M 0,${150 - ((chartData[0] - minPrice) / safeRange) * 100} ${chartData
-                .map((price, i) => `L ${(i / (chartData.length - 1)) * 800},${150 - ((price - minPrice) / safeRange) * 100}`)
-                .join(' ')}`}
-              fill="url(#priceGradient)"
-              stroke="#8b5cf6"
-              strokeWidth="2"
-            />
-            
-            {/* Price points */}
-            {chartData.map((price, i) => (
-              <circle
-                key={i}
-                cx={(i / (chartData.length - 1)) * 800}
-                cy={150 - ((price - minPrice) / safeRange) * 100}
-                r="2"
-                fill="#8b5cf6"
-                opacity="0.8"
-              />
-            ))}
-            
-            {/* Current price indicator */}
-            <line
-              x1="0"
-              y1={150 - ((currentPrice - minPrice) / safeRange) * 100}
-              x2="800"
-              y2={150 - ((currentPrice - minPrice) / safeRange) * 100}
-              stroke="#10b981"
-              strokeWidth="2"
-              strokeDasharray="5,5"
-            />
-            
-            <text
-              x="10"
-              y={150 - ((currentPrice - minPrice) / safeRange) * 100 - 5}
-              fill="#10b981"
-              fontSize="12"
-              fontWeight="bold"
+      <CardContent className="space-y-4">
+        {/* Timeframe Selector */}
+        <div className="flex space-x-1 bg-slate-100 dark:bg-slate-800 rounded-lg p-1">
+          {timeframes.map((tf) => (
+            <Button
+              key={tf}
+              variant={selectedTimeframe === tf ? "default" : "ghost"}
+              size="sm"
+              onClick={() => setSelectedTimeframe(tf)}
+              className="text-xs font-medium"
             >
-              ${currentPrice.toLocaleString()}
-            </text>
-          </svg>
+              {tf}
+            </Button>
+          ))}
         </div>
 
-        {/* Chart Controls */}
-        <div className="flex justify-between items-center mt-4 pt-4 border-t border-border">
-          <div className="flex space-x-4 text-sm">
-            <span className="flex items-center">
-              <div className="w-3 h-3 bg-green-400 rounded mr-2"></div>
-              Current Price
-            </span>
-            <span className="flex items-center">
-              <div className="w-3 h-3 bg-purple-400 rounded mr-2"></div>
-              Price Movement
-            </span>
+        {/* Chart Container */}
+        <div className="relative h-96 w-full bg-slate-900/50 rounded-lg overflow-hidden p-4">
+          {chartData.length > 0 ? (
+            <Line ref={chartRef} data={chartConfig} options={chartOptions} />
+          ) : (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="text-purple-400">
+                <BarChart3 className="w-8 h-8 animate-pulse" />
+                <p className="text-sm mt-2">Loading Chart.js chart...</p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Chart Statistics */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-4 border-t">
+          <div>
+            <p className="text-sm text-muted-foreground">24h High</p>
+            <p className="text-lg font-semibold text-green-500">
+              ${high24h > 0 ? high24h.toLocaleString(undefined, {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+              }) : '--'}
+            </p>
           </div>
-          <div className="flex space-x-2">
-            <Button size="sm" variant="outline" className="text-xs">
-              <Camera className="w-3 h-3 mr-1" />
-              Screenshot
-            </Button>
-            <Button size="sm" variant="outline" className="text-xs">
-              <Share2 className="w-3 h-3 mr-1" />
-              Share
-            </Button>
-            <Button size="sm" variant="outline" className="text-xs">
-              Add Indicators
-            </Button>
+          <div>
+            <p className="text-sm text-muted-foreground">24h Low</p>
+            <p className="text-lg font-semibold text-red-500">
+              ${low24h > 0 ? low24h.toLocaleString(undefined, {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+              }) : '--'}
+            </p>
+          </div>
+          <div>
+            <p className="text-sm text-muted-foreground">24h Volume</p>
+            <p className="text-lg font-semibold">
+              {formatVolume(volume24h)}
+            </p>
+          </div>
+          <div>
+            <p className="text-sm text-muted-foreground">Market Cap</p>
+            <p className="text-lg font-semibold">
+              {formatMarketCap(marketCap)}
+            </p>
           </div>
         </div>
       </CardContent>

@@ -271,21 +271,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Add specific markets endpoint
-  app.get('/api/markets', async (req, res) => {
-    try {
-      const marketData = [
-        { symbol: 'BTC/USDT', price: 64500, change24h: 2.5, volume: 1000000 },
-        { symbol: 'ETH/USDT', price: 2500, change24h: 1.8, volume: 800000 },
-        { symbol: 'SOL/USDT', price: 100, change24h: -1.2, volume: 500000 },
-        { symbol: 'ADA/USDT', price: 0.45, change24h: 3.2, volume: 400000 },
-        { symbol: 'DOT/USDT', price: 6.5, change24h: -0.8, volume: 300000 }
-      ];
-      res.json(marketData);
-    } catch (error) {
-      console.error('Markets error:', error); 
-      res.status(500).json({ success: false, error: 'Failed to fetch market data' });
-    }
-  });
+  // app.get('/api/markets', async (req, res) => {
+  //   try {
+  //     const marketData = [
+  //       { symbol: 'BTC/USDT', price: 64500, change24h: 2.5, volume: 1000000 },
+  //       { symbol: 'ETH/USDT', price: 2500, change24h: 1.8, volume: 800000 },
+  //       { symbol: 'SOL/USDT', price: 100, change24h: -1.2, volume: 500000 },
+  //       { symbol: 'ADA/USDT', price: 0.45, change24h: 3.2, volume: 400000 },
+  //       { symbol: 'DOT/USDT', price: 6.5, change24h: -0.8, volume: 300000 }
+  //     ];
+  //     res.json(marketData);
+  //   } catch (error) {
+  //     console.error('Markets error:', error); 
+  //     res.status(500).json({ success: false, error: 'Failed to fetch market data' });
+  //   }
+  // });
   app.use('/api/trades', communicationRoutes);
   app.use('/api/network', communicationRoutes);
   app.use('/api/orderbook', communicationRoutes);
@@ -1113,10 +1113,12 @@ What specific aspect would you like me to dive deeper into?`;
 
   // Market data endpoints
   app.get('/api/markets', async (req, res) => {
-    try {
-      const markets = await marketDataService.getMarketData();
-      
-      // Format for frontend compatibility
+  try {
+    const markets = await marketDataService.getMarketData();
+    
+    // Return ALT5 market data in the format the frontend expects
+    if (markets && markets.length > 0) {
+      // Use real ALT5 data
       const formattedData = markets.map(market => ({
         symbol: market.symbol,
         price: parseFloat(market.price),
@@ -1126,15 +1128,30 @@ What specific aspect would you like me to dive deeper into?`;
         low24h: parseFloat(market.low24h)
       }));
       
+      console.log(`[Markets] Returning ${formattedData.length} markets with ALT5 prices`);
       res.json({
         success: true,
         data: formattedData
       });
-    } catch (error) {
-      console.error('Markets error:', error); 
-      res.status(500).json({ success: false, error: 'Failed to fetch market data' });
+    } else {
+      // Fallback to mock data if ALT5 fails
+      console.warn('[Markets] No ALT5 data available, using fallback');
+      const fallbackData = [
+        { symbol: 'BTC/USDT', price: 64500, change24h: 2.5, volume: 1000000, high24h: 65000, low24h: 64000 },
+        { symbol: 'ETH/USDT', price: 2500, change24h: 1.8, volume: 800000, high24h: 2550, low24h: 2450 },
+        { symbol: 'SOL/USDT', price: 100, change24h: -1.2, volume: 500000, high24h: 102, low24h: 98 }
+      ];
+      
+      res.json({
+        success: true,
+        data: fallbackData
+      });
     }
-  });
+  } catch (error) {
+    console.error('Markets error:', error); 
+    res.status(500).json({ success: false, error: 'Failed to fetch market data' });
+  }
+});
 
   app.get("/api/markets/:symbol", async (req, res) => {
     try {
@@ -2064,16 +2081,51 @@ app.get("/api/coincap/assets", async (req, res) => {
 
   // Alternative order book endpoint for frontend compatibility
   app.get("/api/orderbook/:base/:quote", async (req, res) => {
-    try {
-      const { base, quote } = req.params;
-      const symbol = `${base}/${quote}`;
+  try {
+    const { base, quote } = req.params;
+    const symbol = `${base}/${quote}`;
+    
+    // Get real ALT5 market data
+    const markets = await marketDataService.getMarketData();
+    const marketForSymbol = markets.find(m => m.symbol === symbol);
+    
+    if (marketForSymbol) {
+      // Use real ALT5 price to generate realistic orderbook
+      const realPrice = parseFloat(marketForSymbol.price);
+      const spread = realPrice * 0.001; // 0.1% spread
+      
+      const orderBook = {
+        symbol,
+        bids: [
+          [realPrice - spread, 0.15],
+          [realPrice - spread * 2, 0.22],
+          [realPrice - spread * 3, 0.18],
+          [realPrice - spread * 4, 0.31],
+          [realPrice - spread * 5, 0.09]
+        ],
+        asks: [
+          [realPrice + spread, 0.12],
+          [realPrice + spread * 2, 0.28],
+          [realPrice + spread * 3, 0.16],
+          [realPrice + spread * 4, 0.24],
+          [realPrice + spread * 5, 0.19]
+        ],
+        lastUpdated: new Date().toISOString()
+      };
+      
+      console.log(`[OrderBook] Returning orderbook for ${symbol} with real ALT5 price: ${realPrice}`);
+      res.json(orderBook);
+    } else {
+      // Fallback to mock data if ALT5 data not available
+      console.warn(`[OrderBook] No ALT5 data for ${symbol}, using fallback`);
       const orderBook = tradingEngineService.getOrderBook(symbol);
       res.json(orderBook);
-    } catch (error) {
-      console.error("Error fetching order book:", error);
-      res.status(500).json({ message: "Failed to fetch order book" });
     }
-  });
+  } catch (error) {
+    console.error("Error fetching order book:", error);
+    res.status(500).json({ message: "Failed to fetch order book" });
+  }
+});
 
   // Get trades for a symbol
   app.get("/api/trades/:symbol", async (req, res) => {
@@ -2999,26 +3051,26 @@ app.get("/api/coincap/assets", async (req, res) => {
   console.log('[Routes] Support endpoints registered before catch-all handler');
 
   // Add market data endpoint using CoinCap service
-  app.get('/api/market-data', async (req, res) => {
-    try {
-      const limit = parseInt(req.query.limit as string) || 10;
-      const { CoinCapService } = await import('./services/coincap-service');
-      const coincapService = new CoinCapService();
-      const assets = await coincapService.getAssets(limit);
-      res.json({
-        success: true,
-        data: assets,
-        timestamp: new Date().toISOString()
-      });
-    } catch (error) {
-      console.error('[Market Data] Error:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Failed to fetch market data',
-        error: error instanceof Error ? error.message : 'Unknown error'
-      });
-    }
-  });
+  // app.get('/api/market-data', async (req, res) => {
+  //   try {
+  //     const limit = parseInt(req.query.limit as string) || 10;
+  //     const { CoinCapService } = await import('./services/coincap-service');
+  //     const coincapService = new CoinCapService();
+  //     const assets = await coincapService.getAssets(limit);
+  //     res.json({
+  //       success: true,
+  //       data: assets,
+  //       timestamp: new Date().toISOString()
+  //     });
+  //   } catch (error) {
+  //     console.error('[Market Data] Error:', error);
+  //     res.status(500).json({
+  //       success: false,
+  //       message: 'Failed to fetch market data',
+  //       error: error instanceof Error ? error.message : 'Unknown error'
+  //     });
+  //   }
+  // });
 
   // Exchange Operations CRM routes - Critical for dashboard functionality
   console.log('[Routes] Registering Exchange Operations CRM routes...');
@@ -3109,9 +3161,9 @@ app.get("/api/coincap/assets", async (req, res) => {
   console.log('[Routes] Exchange Operations CRM routes registered successfully');
 
   // ============= COINCAP API INTEGRATION =============
-  console.log('[Routes] Registering CoinCap API routes...');
-  app.use('/api/coincap', coinCapRoutes);
-  console.log('[Routes] CoinCap API routes registered successfully');
+  // console.log('[Routes] Registering CoinCap API routes...');
+  // app.use('/api/coincap', coinCapRoutes);
+  // console.log('[Routes] CoinCap API routes registered successfully');
 
   // ============= API KEY ROUTES =============
   console.log('[Routes] Registering API Key routes...');

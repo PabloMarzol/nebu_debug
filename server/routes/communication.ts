@@ -830,38 +830,38 @@ router.get("/portfolio-data", async (req, res) => {
 });
 
 // Markets endpoint 
-router.get("/markets-data", async (req, res) => {
-  try {
-    const marketData = [
-      { symbol: 'BTC/USDT', price: 64500, change24h: 2.5, volume: 1000000 },
-      { symbol: 'ETH/USDT', price: 2500, change24h: 1.8, volume: 800000 },
-      { symbol: 'SOL/USDT', price: 100, change24h: -1.2, volume: 500000 },
-      { symbol: 'ADA/USDT', price: 0.45, change24h: 3.2, volume: 400000 },
-      { symbol: 'DOT/USDT', price: 6.5, change24h: -0.8, volume: 300000 }
-    ];
+// router.get("/markets-data", async (req, res) => {
+//   try {
+//     const marketData = [
+//       { symbol: 'BTC/USDT', price: 64500, change24h: 2.5, volume: 1000000 },
+//       { symbol: 'ETH/USDT', price: 2500, change24h: 1.8, volume: 800000 },
+//       { symbol: 'SOL/USDT', price: 100, change24h: -1.2, volume: 500000 },
+//       { symbol: 'ADA/USDT', price: 0.45, change24h: 3.2, volume: 400000 },
+//       { symbol: 'DOT/USDT', price: 6.5, change24h: -0.8, volume: 300000 }
+//     ];
     
-    res.json(marketData);
-  } catch (error) {
-    console.error('Markets error:', error);
-    res.status(500).json({ success: false, error: 'Failed to fetch market data' });
-  }
-});
+//     res.json(marketData);
+//   } catch (error) {
+//     console.error('Markets error:', error);
+//     res.status(500).json({ success: false, error: 'Failed to fetch market data' });
+//   }
+// });
 
 // Orderbook endpoint (default root route for orderbook)
-router.get("/", async (req, res) => {
-  try {
-    const symbol = req.query.symbol as string || 'BTCUSDT';
-    const orderbook = await tradingEngineService.getOrderBook(symbol);
-    res.json({
-      success: true,
-      data: orderbook,
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
-    console.error('Orderbook error:', error);
-    res.status(500).json({ success: false, error: 'Failed to fetch orderbook' });
-  }
-});
+// router.get("/", async (req, res) => {
+//   try {
+//     const symbol = req.query.symbol as string || 'BTCUSDT';
+//     const orderbook = await tradingEngineService.getOrderBook(symbol);
+//     res.json({
+//       success: true,
+//       data: orderbook,
+//       timestamp: new Date().toISOString()
+//     });
+//   } catch (error) {
+//     console.error('Orderbook error:', error);
+//     res.status(500).json({ success: false, error: 'Failed to fetch orderbook' });
+//   }
+// });
 
 router.get("/recent", async (req, res) => {
   try {

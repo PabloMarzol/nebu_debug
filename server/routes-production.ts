@@ -507,34 +507,34 @@ What specific aspect of cryptocurrency would you like to explore?`;
   });
 
   // Missing API endpoints that frontend is requesting
-  app.get("/api/orderbook/:base/:quote", async (req, res) => {
-    try {
-      const { base, quote } = req.params;
-      const symbol = `${base}/${quote}`;
-      const orderBook = {
-        symbol,
-        bids: [
-          [64490, 0.15],
-          [64480, 0.22],
-          [64470, 0.18],
-          [64460, 0.31],
-          [64450, 0.09]
-        ],
-        asks: [
-          [64510, 0.12],
-          [64520, 0.28],
-          [64530, 0.16],
-          [64540, 0.24],
-          [64550, 0.19]
-        ],
-        lastUpdated: new Date().toISOString()
-      };
-      res.json(orderBook);
-    } catch (error) {
-      console.error("Error fetching order book:", error);
-      res.status(500).json({ message: "Failed to fetch order book" });
-    }
-  });
+  // app.get("/api/orderbook/:base/:quote", async (req, res) => {
+  //   try {
+  //     const { base, quote } = req.params;
+  //     const symbol = `${base}/${quote}`;
+  //     const orderBook = {
+  //       symbol,
+  //       bids: [
+  //         [64490, 0.15],
+  //         [64480, 0.22],
+  //         [64470, 0.18],
+  //         [64460, 0.31],
+  //         [64450, 0.09]
+  //       ],
+  //       asks: [
+  //         [64510, 0.12],
+  //         [64520, 0.28],
+  //         [64530, 0.16],
+  //         [64540, 0.24],
+  //         [64550, 0.19]
+  //       ],
+  //       lastUpdated: new Date().toISOString()
+  //     };
+  //     res.json(orderBook);
+  //   } catch (error) {
+  //     console.error("Error fetching order book:", error);
+  //     res.status(500).json({ message: "Failed to fetch order book" });
+  //   }
+  // });
 
   app.get("/api/trades/:symbol", async (req, res) => {
     try {

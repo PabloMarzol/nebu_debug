@@ -1,80 +1,83 @@
 import { useQuery } from "@tanstack/react-query";
-import { TrendingUp, TrendingDown, Activity } from "lucide-react";
+import { TrendingUp, TrendingDown } from "lucide-react";
 
-interface LiveMarketTickerProps {
-  symbol?: string;
-  showChange?: boolean;
-  showVolume?: boolean;
+interface LivePriceWithChangeProps {
+  symbol: string;
   className?: string;
 }
 
-export default function LiveMarketTicker({ 
-  symbol = "BTC/USDT", 
-  showChange = true, 
-  showVolume = false,
-  className = ""
-}: LiveMarketTickerProps) {
+export function LivePriceWithChange({ symbol, className }: LivePriceWithChangeProps) {
+  // Fetch live market data
   const { data: markets, isLoading } = useQuery({
     queryKey: ['/api/markets'],
-    refetchInterval: 5000, // Update every 5 seconds
+    refetchInterval: 1000, // Update every 5 seconds
   });
 
-  const symbolData = Array.isArray(markets) ? markets.find((market: any) => market.symbol === symbol) : null;
+  // Find symbol data with proper error handling
+  const symbolData = (() => {
+    if (!markets?.data || !Array.isArray(markets.data)) return null;
+    
+    return markets.data.find((market: any) => {
+      // Try exact match first
+      if (market.symbol === symbol) return true;
+      
+      // Try normalized match (remove slashes)
+      const normalizedSymbol = symbol.replace('/', '');
+      const normalizedMarketSymbol = market.symbol.replace('/', '');
+      
+      return normalizedMarketSymbol === normalizedSymbol;
+    });
+  })();
 
-  if (isLoading || !symbolData) {
+  if (isLoading) {
     return (
-      <div className={`flex flex-col items-center justify-center text-center space-y-1 ${className}`}>
-        <div className="text-xs text-slate-400 font-medium">
-          {symbol}
+      <div className={className}>
+        <div className="text-center">
+          <div className="text-sm text-muted-foreground">{symbol}</div>
+          <div className="text-lg font-semibold">Loading...</div>
         </div>
-        <Activity className="w-4 h-4 animate-pulse text-blue-400" />
-        <span className="text-xs text-slate-400">Loading...</span>
       </div>
     );
   }
 
-  const price = parseFloat(symbolData.price);
-  const change24h = parseFloat(symbolData.change24h);
-  const volume24h = parseFloat(symbolData.volume24h);
-  const isPositive = change24h >= 0;
+  if (!symbolData) {
+    return (
+      <div className={className}>
+        <div className="text-center">
+          <div className="text-sm text-muted-foreground">{symbol}</div>
+          <div className="text-lg font-semibold">No Data</div>
+        </div>
+      </div>
+    );
+  }
+
+  const price = parseFloat(symbolData.price) || 0;
+  const change = parseFloat(symbolData.change24h) || 0;
+  const isPositive = change >= 0;
 
   return (
-    <div className={`flex flex-col items-center justify-center text-center space-y-1 ${className}`}>
-      <div className="text-xs text-slate-400 font-medium">
-        {symbol}
-      </div>
-      <div className="font-semibold text-white text-lg">
-        ${price.toLocaleString(undefined, { 
-          minimumFractionDigits: price > 1 ? 2 : 6,
-          maximumFractionDigits: price > 1 ? 2 : 6
-        })}
-      </div>
-      {showChange && (
-        <div className={`flex items-center justify-center text-sm ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
-          {isPositive ? <TrendingUp className="w-3 h-3 mr-1" /> : <TrendingDown className="w-3 h-3 mr-1" />}
-          <span>{isPositive ? '+' : ''}{change24h.toFixed(2)}%</span>
+    <div className={className}>
+      <div className="text-center space-y-1">
+        <div className="text-sm text-muted-foreground font-medium">
+          {symbol}
         </div>
-      )}
-      {showVolume && (
-        <div className="text-xs text-slate-400 text-center">
-          Vol: {volume24h.toLocaleString()}
+        <div className="text-lg font-bold text-white">
+          ${price.toLocaleString(undefined, {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 6
+          })}
         </div>
-      )}
+        <div className={`flex items-center justify-center text-sm ${
+          isPositive ? 'text-green-400' : 'text-red-400'
+        }`}>
+          {isPositive ? (
+            <TrendingUp className="w-3 h-3 mr-1" />
+          ) : (
+            <TrendingDown className="w-3 h-3 mr-1" />
+          )}
+          {isPositive ? '+' : ''}{change.toFixed(2)}%
+        </div>
+      </div>
     </div>
   );
-}
-
-// Simplified component for displaying just price
-export function LivePrice({ symbol, className = "" }: { symbol: string; className?: string }) {
-  return <LiveMarketTicker symbol={symbol} showChange={false} showVolume={false} className={className} />;
-}
-
-// Component for displaying price with change
-export function LivePriceWithChange({ symbol, className = "" }: { symbol: string; className?: string }) {
-  return <LiveMarketTicker symbol={symbol} showChange={true} showVolume={false} className={className} />;
-}
-
-// Full market data component
-export function LiveMarketData({ symbol, className = "" }: { symbol: string; className?: string }) {
-  return <LiveMarketTicker symbol={symbol} showChange={true} showVolume={true} className={className} />;
 }
